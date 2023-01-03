@@ -1,0 +1,5 @@
+- Docs (https://leanprover-community.github.io/mathlib4_docs/) don't distinguish between functions and theorems.
+  it would be nice to be able to filter by one or the other.
+- String functions are all using `partial` which makes them unamenable to proving.
+- List and Array conversions don't seem to be simplified away
+- List.split is tail recursive so harder to prove with.
