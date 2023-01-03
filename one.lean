@@ -248,7 +248,7 @@ theorem Nat.toDigitsCore_shift' (b:ℕ) (n:ℕ) (P: b>1): ∀i:ℕ, (Nat.toDigit
     simp
     rw [heq]
     unfold toDigits toDigitsCore digitChar
-    simp
+    simp [List.getD_singleton]
     
   . next heq =>
     rw [Nat.todigitsCore_accumulates_suffix]
