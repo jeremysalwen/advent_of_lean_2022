@@ -1,10 +1,17 @@
-import Mathlib.Tactic.Linarith
-import Mathlib.Tactic.Ring
+import Mathlib.Tactic.LibrarySearch
+import Lean
+
+theorem Nat.toDigitsCore_slow (b:ℕ) (n:ℕ) (P: b>1): ∀i:ℕ, (Nat.toDigits b n).reverse.getD (i+1) '0' = (Nat.toDigits b (n/b)).reverse.getD i '0':= by
+  intro i
+
+  conv =>
+    left
+    unfold toDigits toDigitsCore
+  sorry
 
 
-def fn (b n:ℕ): List ℕ  := sorry
+theorem Nat.toDigitsCore_fast (b:ℕ) (n:ℕ) (P: b>1): ∀i:ℕ, (Nat.toDigits b n).reverse.getD (i+1) '0' = (Nat.toDigits b (n/b)).reverse.getD i '0':= by
+  intro i
 
-theorem demo (b n i:ℕ) (h: i< List.length (fn b n)) :
-    List.length (fn b n) - 1 - (List.length (fn b n) - 1 - i) = i :=
-    Nat.sub_sub_self (Nat.le_sub_of_add_le h)
-
+  rw [toDigits, toDigitsCore]
+  sorry

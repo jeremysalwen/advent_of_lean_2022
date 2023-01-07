@@ -2,6 +2,7 @@ import Lean
 import Mathlib.data.list.basic
 import Mathlib.Tactic.Find
 import Mathlib.Tactic.LibrarySearch
+import Mathlib.Tactic.applyFun
 import Init.Data.String.Basic
 import Init.Data.Int.Basic
 import Std.Data.Array.Init.Lemmas
@@ -229,6 +230,7 @@ theorem List.get?_cons {h: α} {tail : List α} {n : Nat} (hn: n>0): (h::tail).g
   | zero => simp only at hn
   | succ n => simp only [ge_iff_le, Nat.succ_sub_succ_eq_sub, nonpos_iff_eq_zero, tsub_zero]
 
+@[simp]
 theorem List.getD_singleton {n : Nat} (elem: α): List.getD [elem] n elem = elem := by
   unfold getD get? Option.getD
   simp only [cons.injEq, and_imp, forall_apply_eq_imp_iff', forall_eq']
@@ -236,34 +238,38 @@ theorem List.getD_singleton {n : Nat} (elem: α): List.getD [elem] n elem = elem
   . simp only
   . simp only [get?]
 
+set_option profiler true
 theorem Nat.toDigitsCore_shift' (b:ℕ) (n:ℕ) (P: b>1): ∀i:ℕ, (Nat.toDigits b n).reverse.getD (i+1) '0' = (Nat.toDigits b (n/b)).reverse.getD i '0':= by
   intro i
-  conv =>
-    left
-    unfold toDigits toDigitsCore
-  simp
+  
+  rw [toDigits, toDigitsCore]
+
+  simp only [add_eq, add_zero]
   split
   . next heq =>
     conv => left; unfold List.getD
-    simp
+    simp only [List.get?, Option.getD_none]
     rw [heq]
     unfold toDigits toDigitsCore digitChar
-    simp [List.getD_singleton]
+    simp only [Nat.zero_div, zero_mod, zero_ne_one, ite_false, ite_true, List.reverse_cons, List.reverse_nil,
+  List.nil_append, List.getD_singleton]
     
   . next heq =>
     rw [Nat.todigitsCore_accumulates_suffix]
     rw [List.getD, List.getD]
     congr 1
-    simp
+    simp only [List.reverse_append, List.reverse_cons, List.reverse_nil, List.nil_append, List.singleton_append,
+      List.cons.injEq, succ.injEq, and_imp, forall_apply_eq_imp_iff₂, forall_apply_eq_imp_iff', forall_eq', 
+      List.get?, add_eq, add_zero]
     rw [Nat.toDigitsCore_fuel_irrelevant, ← Nat.toDigits]
-    . simp
+    . simp only [ge_iff_le]
       have h: n ≠ 0 := by 
         simp only [ne_eq]
         intro h
         rw [h] at heq
         simp only [Nat.zero_div] at heq
       apply Nat.div_lt_self
-      . simp [h, Nat.ne_zero_gt_zero]
+      . simp only [ne_eq, h, not_false_iff, ne_zero_gt_zero]
       . exact P
     . exact P
     
@@ -294,6 +300,11 @@ lemma Nat.toDigitsCore_shift_full (b:ℕ) (n:ℕ) (P: b>1): ∀i:ℕ, (Nat.toDig
 
 def Nat.digit (base:ℕ) (n:ℕ) (index:ℕ): ℕ := (n / base^index) % base
 
+@[simp]
+theorem Nat.digit_lt_base {base n index: ℕ} (P: base > 0): Nat.digit base n index < base := by
+  unfold Nat.digit
+  apply Nat.mod_lt _ P
+
 
 
 theorem Nat.toDigits_eq_digit_rev (b: ℕ) (n:ℕ) (P: b > 1): 
@@ -301,20 +312,21 @@ theorem Nat.toDigits_eq_digit_rev (b: ℕ) (n:ℕ) (P: b > 1):
   intro i
   rw [Nat.toDigitsCore_shift_full]
   . unfold toDigits toDigitsCore digit
-    simp
+    simp only [add_eq, add_zero]
     split
     . next heq =>
-      simp [List.getD]
+      simp only [List.reverse_cons, List.reverse_nil, List.nil_append, List.getD._eq_1, List.get?, Option.getD_some]
     . next heq =>
       rw [Nat.todigitsCore_accumulates_suffix]
-      simp [List.getD]
+      simp only [List.reverse_append, List.reverse_cons, List.reverse_nil, List.nil_append, List.singleton_append,
+  List.getD._eq_1, List.get?, Option.getD_some]
   . exact P
 
-#find _ / _ = 0 -> _
+
 theorem Nat.toDigitsCore_length_eq_log  (b fuel n: ℕ ) (P: b>1) (R: fuel>n): List.length (Nat.toDigitsCore b fuel n accum) = Nat.log b n + 1 + List.length accum:= by
-  have heq: accum = [] ++ accum := by simp
+  have heq: accum = [] ++ accum := by  simp only [List.nil_append]
   rw [heq, Nat.toDigitsCore_accumulates]
-  simp
+  simp only [List.length_append, List.nil_append, add_left_inj]
   induction n using Nat.strong_induction_on generalizing fuel accum
   case h n ih =>
     unfold toDigitsCore
@@ -322,14 +334,47 @@ theorem Nat.toDigitsCore_length_eq_log  (b fuel n: ℕ ) (P: b>1) (R: fuel>n): L
     . next i _ _ _=> 
       exfalso
       apply Nat.not_lt_of_le (Nat.zero_le i)
-      apply Q
-    . next =>
+      apply R
+    . next  w y p l =>
       simp; split
-      . next  i _ _ _ _ h₂=>
+      . next i h₂=>
         simp
         left
-        have  h: b > 0 :=by library_search
-        apply Nat.div_lt_one_iff h
+        have  h: b > 0 := pos_of_gt P
+        apply (Nat.div_lt_one_iff h).1
+        simp only [h₂, zero_lt_one]
+      . next n heq =>
+        rw [Nat.todigitsCore_accumulates_suffix]
+        simp only [List.length_append, List.length_singleton, add_left_inj]
+        have h: n/b<n := by
+          apply Nat.div_lt_self
+          . apply Nat.pos_of_ne_zero
+            intro h
+            simp only [h, Nat.zero_div, not_true] at heq
+          . apply P
+        rw [ih]
+        . rw [Nat.log_div_base, Nat.sub_add_cancel]
+          apply Nat.log_pos
+          . apply P
+          . apply (Nat.one_le_div_iff (Nat.lt_of_succ_lt P)).1
+            apply Nat.succ_le_iff.2
+            apply Nat.ne_zero_gt_zero
+            apply heq
+        . exact h
+        . exact []
+        . calc
+          l ≥ n := by exact le_of_lt_succ R
+          _ > n/b := h
+        . simp
+
+theorem Nat.toDigits_length_eq_log  {b n: ℕ} (P: b>1): List.length (Nat.toDigits b n) = Nat.log b n + 1:= by
+  unfold Nat.toDigits
+  rw [Nat.toDigitsCore_length_eq_log]
+  . simp only [List.length_nil, add_zero]
+  . exact P
+  . apply Nat.lt_succ_self
+  
+
 theorem Nat.toDigits_eq_digit (b n:ℕ) (P: b>1):
  ∀ i:ℕ, i < List.length (Nat.toDigits b n) →  List.getD (Nat.toDigits b n) i '0' = Nat.digitChar (Nat.digit b n (List.length (Nat.toDigits b n) - 1 - i)) := by
   intro i h
@@ -339,17 +384,24 @@ theorem Nat.toDigits_eq_digit (b n:ℕ) (P: b>1):
   . have h₂: List.length (toDigits b n) - 1 ≥ (List.length (toDigits b n) - 1 - i) := by simp
     have h₃: List.length (toDigits b n) ≥ 1 := by calc 
       List.length (toDigits b n) > i := h
-      _ ≥ 0 := by simp
+      _ ≥ 0 := by simp only [ge_iff_le, _root_.zero_le]
     have h₄: i ≤ List.length (toDigits b n) - 1 := by apply Nat.le_pred_of_lt; exact h
     zify [h₂, h₃, h₄]
     apply Int.eq_of_sub_eq_zero
     ring_nf
   . rw [Nat.sub_sub]
     apply Nat.sub_lt_self
-    . simp
+    . simp only [add_pos_iff, true_or]
     . rw [Nat.add_comm]
       apply Nat.lt_iff_add_one_le.1 h
 
+theorem Nat.digit_gt_log_eq_zero (b n i:ℕ) (P: b>1) (Q: i > Nat.log b n ): Nat.digit b n i = 0 := by
+  unfold digit
+  convert Nat.zero_mod b
+  apply Nat.div_eq_of_lt
+  apply Nat.lt_pow_of_log_lt
+  . exact P
+  . exact Q
 
 def List.lastN (n:ℕ) (l:List α): List α := List.drop (l.length-n) l
 
@@ -399,8 +451,8 @@ lemma Nat.eq_of_le_ge {n m: ℕ} (P: n ≤ m) (Q: n ≥ m): n = m := by
 @[simp]
 theorem List.get_zero' (l:List α) (h: 0 < l.length): List.get l {val:=0, isLt:=h} :: List.tail l = l := by
   cases l with
-  | nil => simp at h
-  | cons => simp
+  | nil => simp only [zero_le, ge_iff_le, nonpos_iff_eq_zero, length_nil, lt_self_iff_false] at h
+  | cons => simp only [get, tail_cons]
 
 @[simp]
 theorem List.drop_one_eq_tail (l:List α): l.drop 1 = l.tail := by
@@ -409,15 +461,15 @@ theorem List.drop_one_eq_tail (l:List α): l.drop 1 = l.tail := by
 @[simp]
 theorem List.drop_eq_cons (i) (l: List α) (h: i < l.length): l[i] :: l.drop (i+1) = l.drop i := by
   induction l generalizing i with
-  | nil => simp at h
+  | nil => simp only [length_nil, zero_le, ge_iff_le, nonpos_iff_eq_zero, not_lt_zero'] at h
   | cons head tail ih =>
     conv => right; unfold drop
     split
-    . next => simp
+    . next => simp only [zero_le, ge_iff_le, nonpos_iff_eq_zero, getElem_eq_get, get, drop]
     . next heq=> 
-      simp at heq
+      simp only at heq
     . next z x n hd tl heq=>
-      simp at heq
+      simp only [cons.injEq] at heq
       have ⟨ _,heq₂⟩ := heq
       rw [ ←heq₂]
       apply ih
@@ -426,20 +478,20 @@ theorem List.drop_eq_cons (i) (l: List α) (h: i < l.length): l[i] :: l.drop (i+
 lemma reverse_index_valid (n) (k) (P:n<k): k-1-n < k := by 
   rw [Nat.sub_sub]
   apply Nat.sub_lt_self
-  . simp
+  . simp only [zero_le, ge_iff_le, nonpos_iff_eq_zero, add_pos_iff, true_or]
   . apply Nat.le_of_lt_succ
     rw [Nat.succ_eq_add_one, Nat.add_comm]
-    simp [P]
+    simp only [add_lt_add_iff_right, P]
 
 @[simp]
 theorem List.drop_eq_cons_drop (n) (l:List α) (h:n < length l):
   (List.get l ⟨n, h⟩ ) :: (List.drop (n+1) l) = List.drop n l := by
   induction l generalizing n
-  . case nil => simp at h
+  . case nil => simp only [length_nil, zero_le, ge_iff_le, nonpos_iff_eq_zero, not_lt_zero'] at h
   . case cons head tail ih =>
     cases n with
-    | zero => simp
-    | succ n => simp [ih]
+    | zero => simp only [get, drop]
+    | succ n => simp only [get, drop, zero_le, ge_iff_le, nonpos_iff_eq_zero, Nat.add_eq, add_zero, ih]
 
 @[simp]
 theorem List.lastN_eq_cons_lastN (n) (l:List α) (P:n < l.length): 
@@ -447,8 +499,8 @@ get l ⟨ l.length - 1 - n, reverse_index_valid n l.length P⟩::(List.lastN n l
   unfold lastN
   have h:  length l - (n + 1) < length l := by
     apply Nat.sub_lt_self
-    . simp
-    . simp [← Nat.succ_eq_add_one, Nat.succ_le_of_lt, P]
+    . simp only [zero_le, ge_iff_le, nonpos_iff_eq_zero, add_pos_iff, or_true]
+    . simp only [Nat.succ_eq_add_one, P, Nat.succ_le_of_lt]
 
   conv => 
     right
@@ -462,149 +514,389 @@ get l ⟨ l.length - 1 - n, reverse_index_valid n l.length P⟩::(List.lastN n l
     rw [Nat.sub_add_cancel]
     . rw [Nat.add_comm, ← Nat.succ_eq_add_one]
       apply Nat.succ_le_of_lt P
-    . simp [Nat.le_of_lt, P]
+    . simp only [P, Nat.le_of_lt]
 
 
 @[simp]
 theorem List.take_cons (n) (head:α) (tail:List α): List.take (n+1) (head::tail) = head::(List.take n tail) := by
-  simp
+  simp only [take, zero_le, ge_iff_le, nonpos_iff_eq_zero, Nat.add_eq, add_zero]
 
 @[simp]
 theorem List.drop_cons (n) (head:α) (tail:List α): List.drop (n+1) (head::tail) = List.drop n tail := by
-  simp
+  simp only [drop, zero_le, ge_iff_le, nonpos_iff_eq_zero, Nat.add_eq, add_zero]
 
 @[simp]
 theorem List.take_append (n) (l₁ l₂:List α) (P:n ≤ l₁.length): List.take n (l₁++l₂) = List.take n l₁ := by
   induction l₁ generalizing n with
   | nil =>
-    simp_all
+    simp_all only [length_nil, zero_le, ge_iff_le, nonpos_iff_eq_zero, nil_append,zero_le, ge_iff_le, nonpos_iff_eq_zero, take]
   | cons head tail ih =>
     cases n with
     | zero =>
-      simp
+      simp only [take]
     | succ n =>
-      simp
+      simp only [take, List.append_eq, cons.injEq, true_and]
       rw [ih]
-      simp at P
+      simp only [length_cons] at P
       rw [← Nat.succ_le_succ_iff]
       apply P
       
 theorem List.lastN_eq_reverse_take (n:ℕ) (l: List α): List.lastN n l = (List.take n l.reverse).reverse := by
   unfold List.lastN
   induction l generalizing n with
-  | nil => simp
+  | nil => simp only [length_nil, zero_le, ge_iff_le, nonpos_iff_eq_zero, Nat.zero_sub, tsub_eq_zero_of_le, drop_nil,
+  reverse_nil, take_nil]
   | cons head tail ih =>
-    simp
+    simp only [length_cons, tsub_le_iff_right, ge_iff_le, reverse_cons, length_reverse]
     cases h: decide (n ≤ length tail) with
     | false => 
-      simp at h
+      simp only [decide_eq_false_iff_not, not_le] at h
       rw [Nat.succ_eq_add_one, Nat.add_comm]
       rw [List.take_length_le, List.reverse_append, List.reverse_reverse]
-      simp
-      have heq : 1 + length tail - n = 0 := by simp; rw [Nat.add_comm]; apply Nat.le_of_lt_succ; rw [Nat.succ_eq_add_one]; simp [h]
+      simp only [tsub_le_iff_right, ge_iff_le, reverse_cons, reverse_nil, nil_append, singleton_append]
+      have heq : 1 + length tail - n = 0 := by 
+        simp only [tsub_le_iff_right, ge_iff_le, zero_le, nonpos_iff_eq_zero, tsub_eq_zero_iff_le]
+        rw [Nat.add_comm]
+        apply Nat.le_of_lt_succ
+        rw [Nat.succ_eq_add_one]
+        simp only [add_lt_add_iff_right, h]
       rw [heq]
-      simp [h]
+      simp only [drop]
       rw [List.length_append, List.length_reverse]
-      simp
+      simp only [length_singleton]
       exact h
     | true =>
-      simp at h
+      simp only [decide_eq_true_eq] at h
       rw [Nat.succ_eq_add_one, Nat.add_comm, Nat.add_sub_assoc, Nat.add_comm, List.drop_cons, ih]
       congr 1
       rw [List.take_append]
-      . simp; apply h
+      . simp only [length_reverse]; apply h
       . apply h
 
 @[simp]
 theorem Nat.digitChar_sub_zero_eq_self (n:ℕ) (P: n<10): Char.toNat (Nat.digitChar n) - Char.toNat '0' = n := by
   revert n
   decide
+theorem Nat.sub_self_sub_eq_min (n k:ℕ): n - (n-k) = Nat.min n k := by
+  conv => left; right; rw [Nat.sub_eq_sub_min]
+  rw [Nat.sub_sub_self]
+  simp only [min_le_iff, ge_iff_le, le_refl, true_or]
 
-theorem Nat.toDigits_modulo (b n p i:ℕ) (P: i<p) (Q: b>1): List.getD (Nat.toDigits b (n % b^p)) (List.length (Nat.toDigits b (n % b^p))-1-i) '0' = List.getD (Nat.toDigits b n) (List.length (Nat.toDigits b n)-1-i) '0' := by
-  repeat rw [Nat.toDigits_eq_digit]
+
+@[simp]
+theorem List.lastN_eq_tail (l: List α): List.lastN (List.length l - 1) l = List.tail l := by
+  unfold List.lastN
+  rw [Nat.sub_self_sub_eq_min]
+  cases l with
+  | nil => simp only [drop, tail_nil]
+  | cons hd tl => 
+    have h: Nat.succ (List.length tl) ≥ 1 := by 
+      apply Nat.succ_le_succ
+      apply Nat.zero_le
+    simp only [length_cons, Nat.min_eq_right h, ge_iff_le, drop, tail_cons]
+
+
+
+@[simp]
+theorem Nat.toDigits_zero (b:ℕ): Nat.toDigits b 0 = ['0'] := by
+  unfold toDigits toDigitsCore
+  simp only [_root_.zero_le, ge_iff_le, nonpos_iff_eq_zero, Nat.zero_div, zero_mod, ite_true, List.cons.injEq]
+
+theorem Nat.toDigits_modulo (b n p i:ℕ) (P: i<p) (Q: b>1): 
+    List.getD (List.reverse (Nat.toDigits b (n % b^p))) i '0' = List.getD (List.reverse (Nat.toDigits b n)) i '0' := by
+  rw [Nat.toDigits_eq_digit_rev, Nat.toDigits_eq_digit_rev]
+  case P => exact Q
+  case P => exact Q
   congr 1
   unfold digit
-  cases h:decide (i< List.length (Nat.toDigits b (n % b^p))) with
+  have hpeq := Nat.sub_add_cancel (le_of_lt P)
+  conv => left; left; left; rw [← hpeq, pow_add]
+  
+  rw [Nat.mod_mul_left_div_self, Nat.mod_mod_of_dvd]
+  apply dvd_pow
+  . apply dvd_refl
+  . simp only [min_le_iff, ge_iff_le, tsub_le_iff_right, le_min_iff, _root_.zero_le, nonpos_iff_eq_zero, ne_eq,
+      tsub_eq_zero_iff_le, not_and, not_le, P, implies_true]
+
+theorem List.getD_ext (P: List.length a = List.length b) (Q: ∀ i, List.getD a i d = List.getD b i d): a = b := by
+  apply List.ext
+  intro n
+  have h:= Q n
+  unfold getD at h
+  cases hlt: decide (n < List.length a) with
   | true => 
-    simp at h
-    cases h₂:decide (i< List.length (Nat.toDigits b n)) with
-    | true =>
-      simp at h₂
-      repeat rw [Nat.sub_sub_self]
-      . have h₃: b^p = b^i * b^(p-i) := by
-          rw [← pow_add b, Nat.add_comm, Nat.sub_add_cancel]
-          exact Nat.le_of_lt P
-        simp [ h₃, Nat.mod_mul_right_div_self]
-        rw [Nat.mod_mod_of_dvd]
-        apply dvd_pow_self
-        apply Nat.sub_ne_zero_of_lt P
+    simp only [decide_eq_true_eq] at hlt
+    have hltb: n < length b := by rw [← P]; exact hlt
+    simp_all only [zero_le, ge_iff_le, nonpos_iff_eq_zero, hltb, get?_eq_get, Option.getD_some, gt_iff_lt, P] 
+  | false =>
+     simp only [decide_eq_false_iff_not, not_lt] at hlt
+     have hltb: n ≥ length b := by rw [← P]; exact hlt
+     simp only [zero_le, ge_iff_le, nonpos_iff_eq_zero, hlt, List.get?_eq_none.2, hltb]
 
-      . apply Nat.le_pred_of_lt h₂
-      . apply Nat.le_pred_of_lt h
-    | false => 
-      simp at h₂
-      simp [h₂]
+theorem  List.getD_eq_get (P:i < List.length l): List.getD l i d = l[i] := by
+  unfold getD
+  simp only [zero_le, ge_iff_le, nonpos_iff_eq_zero, List.get?_eq_get P, Option.getD_some, getElem_eq_get]
+
+theorem List.getD_eq_default (P: i≥ List.length l): List.getD l i d = d := by
+  simp only [getD_eq_get?, zero_le, ge_iff_le, nonpos_iff_eq_zero, P, List.get?_eq_none.2, Option.getD_none]
+
+theorem List.getD_reverse (P: i < List.length l): List.getD (List.reverse l) i d = l[(List.length l - 1 - i)]'(Nat.sub_one_sub_lt P) := by
+  unfold List.getD
+  rw [List.get?_reverse, List.get?_eq_get]
+  simp only [tsub_le_iff_right, ge_iff_le, Option.getD_some, getElem_eq_get]
+  . exact Nat.sub_one_sub_lt P
+  . exact P
+
+@[simp]
+theorem List.getD_append (P: i < List.length l₁): List.getD (l₁ ++ l₂) i d = List.getD l₁ i d:= by
+  unfold getD
+  simp only [zero_le, ge_iff_le, nonpos_iff_eq_zero, gt_iff_lt, P, get?_append]
 
 
-    . exact Q
-    . exact h
-    . exact Q
+@[simp]
+theorem List.getD_append_right (P: i ≥ List.length l₁): List.getD (l₁ ++ l₂) i d = List.getD l₂ (i - List.length l₁) d:= by
+  unfold getD
+  simp only [zero_le, ge_iff_le, nonpos_iff_eq_zero, gt_iff_lt, P, get?_append_right]
 
-  | false => simp at h
+
+theorem String.toNatΔ_eq_of_rev_get_eq_aux (P: ∀ i, List.getD a.reverse i '0' = List.getD b.reverse i '0') (Q: List.length a ≤ List.length b): String.toNatΔ a = String.toNatΔ b := by
+    induction b with
+    | nil =>
+      simp only [List.length_nil, zero_le, ge_iff_le, nonpos_iff_eq_zero, List.length_eq_zero] at Q
+      simp only [Q]
+    | cons hd tl ih =>
+      cases heq: decide (List.length a = List.length (hd::tl))
+      case true => 
+        simp only [decide_eq_true_eq] at heq
+        have h: a = (hd::tl) := by 
+          apply List.getD_ext heq (d:='0')
+          intro n
+          cases hlt: decide (n < List.length a) with
+          | true => 
+            simp only [decide_eq_true_eq] at hlt
+            have hblt: n < List.length (hd::tl) := by simp_all only [tsub_le_iff_right, ge_iff_le, zero_le, nonpos_iff_eq_zero, tsub_eq_zero_iff_le, heq]
+            simp only [gt_iff_lt, hlt, List.getD_eq_get, List.getElem_eq_get, hblt]
+            have Q:= P (List.length a -1 - n)
+            conv at Q => right; rw [heq]
+            rw [ List.getD_reverse (Nat.sub_one_sub_lt hlt),
+              List.getD_reverse (Nat.sub_one_sub_lt hblt)] at Q
+            simp only [tsub_le_iff_right, ge_iff_le, Nat.sub_sub_self (Nat.le_pred_of_lt hlt), List.getElem_eq_get,
+              Nat.sub_sub_self (Nat.le_pred_of_lt hblt)] at Q
+            apply Q
+            
+          | false => 
+            simp only [decide_eq_false_iff_not, not_lt] at hlt
+            have hblt: n ≥ List.length (hd::tl) := by simp_all only [tsub_le_iff_right, ge_iff_le, zero_le, nonpos_iff_eq_zero, tsub_eq_zero_iff_le, heq]
+            simp only [List.getD_eq_get?, zero_le, ge_iff_le, nonpos_iff_eq_zero, hlt, List.get?_eq_none.2,
+              Option.getD_none, hblt]
+        simp only [h]
+      case false =>
+        simp only [decide_eq_false_iff_not] at heq
+        have R := P (List.length tl)
+        rw [List.getD_eq_default] at R
+        . rw [List.getD_reverse] at R
+          . conv => right; unfold toNatΔ toNatAux
+            simp only [List.length_cons, Nat.succ_sub_succ_eq_sub, tsub_zero, ge_iff_le, zero_le, nonpos_iff_eq_zero,
+              Nat.sub_self, le_refl, tsub_eq_zero_of_le, List.getElem_eq_get, List.get] at R
+            rw [String.toNatAux_accumulates, ← toNatΔ, ← R]
+            simp only [zero_le, ge_iff_le, nonpos_iff_eq_zero, zero_mul, Nat.sub_self, le_refl, tsub_eq_zero_of_le,
+              add_zero]
+            apply ih
+            . intro i
+              rw [P, List.reverse_cons]
+              cases h: decide ( i < List.length tl) with
+              | true =>
+                simp only [decide_eq_true_eq] at h
+                rw [List.getD_append]
+                simp only [List.length_reverse, h]
+
+              | false =>
+                simp only [decide_eq_false_iff_not, not_lt] at h
+                rw [List.getD_append_right, ←R, List.getD_singleton, List.getD_eq_default] <;> 
+                  simp only [List.length_reverse, ge_iff_le, h]
+            . apply Nat.le_of_lt_succ
+              apply Nat.lt_of_le_of_ne Q heq
+          . simp only [List.length_cons, Nat.lt_succ_self]
+
+        . simp only [List.length_cons] at Q
+          simp only [List.length_reverse, ge_iff_le]
+          apply Nat.le_of_lt_succ
+          apply Nat.lt_of_le_of_ne Q heq
+          
+
+theorem String.toNatΔ_eq_of_rev_get_eq (P: ∀ i, List.getD a.reverse i '0' = List.getD b.reverse i '0'): String.toNatΔ a = String.toNatΔ b := by
+  cases h: decide (List.length a ≤ List.length b) with
+  | true =>
+    simp only [decide_eq_true_eq] at h
+    apply String.toNatΔ_eq_of_rev_get_eq_aux P h
+  | false =>
+    simp only [decide_eq_false_iff_not, not_le] at h
+    apply Eq.symm
+    apply (String.toNatΔ_eq_of_rev_get_eq_aux (a:=b) (b:=a) (Q:=le_of_lt h))
+    intro i
+    apply Eq.symm
+    apply P
+
+@[simp]
+theorem List.getD_take (P: i < n): List.getD (List.take n l) i d = List.getD l i d := by
+  conv => right; rw [← List.take_append_drop n l]
+  cases h: decide (i < List.length l) with
+  | true =>
+    simp only [decide_eq_true_eq] at h
+    rw [List.getD_append]
+    simp only [length_take, min_le_iff, ge_iff_le, lt_min_iff]
+    exact ⟨P,h⟩
+  | false =>
+    simp only [decide_eq_false_iff_not, not_lt] at h
+    rw [List.getD_eq_default, List.getD_eq_default]
+    . simp only [take_append_drop, ge_iff_le, h]
+    . simp only [length_take, min_le_iff, ge_iff_le, h, or_true]
+      
+theorem String.toNatΔ_inv_NattoDigits_tail (b n i:ℕ) (Q: b > 1): String.toNatΔ (List.lastN i (Nat.toDigits b n)) = String.toNatΔ (Nat.toDigits b (n % b^i)) := by
+  apply String.toNatΔ_eq_of_rev_get_eq
+  intro ind
+  simp only [ge_iff_le, List.lastN_eq_reverse_take, List.reverse_reverse]
+  cases i
+  case  zero =>
+    simp only [List.take, List.length_nil, zero_le, ge_iff_le, nonpos_iff_eq_zero, List.getD_eq_default,
+  Nat.zero_eq, pow_zero, Nat.mod_one, Nat.toDigits_zero, List.reverse_cons, List.reverse_nil, List.nil_append,
+  List.length_singleton, List.getD_singleton]
+  case succ i =>
+  cases h: decide (ind < Nat.succ i) with
+  | true =>
+    simp only [ge_iff_le, decide_eq_true_eq] at h
+    simp only [h, List.getD_take]
+    rw [Nat.toDigits_modulo] <;> assumption
+  | false =>
+    simp only [decide_eq_false_iff_not, not_lt] at h
+    rw [List.getD_eq_default, List.getD_eq_default]
+    . simp only [List.length_reverse, gt_iff_lt, ge_iff_le]
+      rw [Nat.toDigits_length_eq_log]
+      . calc
+        Nat.log b (n % b ^ Nat.succ i) + 1 ≤ Nat.succ i := by
+          { 
+            apply Nat.succ_le_of_lt
+            cases heq: n % b ^ Nat.succ i with
+            | zero => simp only [Nat.zero_eq, zero_le, ge_iff_le, nonpos_iff_eq_zero, Nat.log_zero_right, Nat.succ_pos']
+            | succ k => 
+              rw [← heq]
+              apply Nat.log_lt_of_lt_pow
+              . simp only [heq, zero_le, ge_iff_le, nonpos_iff_eq_zero, ne_eq, Nat.succ_ne_zero, not_false_iff]
+              . apply Nat.mod_lt
+                apply Nat.pos_pow_of_pos
+                apply Nat.lt_trans Nat.zero_lt_one Q
+          }
+        _ ≤ ind := h
+      . exact Q
+    . simp only [List.length_take, List.length_reverse, min_le_iff, ge_iff_le, h, true_or]
 
 
-    
-theorem String.toNatΔ_inv_NattoDigits_tail (b:ℕ) (n:ℕ) (i:ℕ) (P: b <= 10) (Q: b > 1): String.toNatΔ (List.lastN i (Nat.toDigits b n)) = String.toNatΔ (Nat.to_digits_core_lens_eq b (n % b^i)) := by
-  induction i with
-  | zero =>
-    simp [Nat.mod_one, Nat.toDigits, Nat.toDigitsCore]
-  | succ i ih =>
-    rw [← List.lastN_eq_cons_lastN]
-    conv => left; unfold toNatΔ toNatAux
-    simp
-    rw [String.toNatAux_accumulates, ← toNatΔ, ih,
-     ← Option.getD_some (a:= List.get _ _) (b:=Char.ofNat 48),
-     ← List.get?_eq_get,
-     ← List.getD_eq_get?,
-     Nat.toDigits_eq_digit,
-     Nat.digitChar_sub_zero_eq_self]
-    cases h: decide (i < (Nat.toDigits b n).length) with
-    | true => 
-      simp at h
-      have heq:  List.length (Nat.toDigits b n) - 1 - (List.length (Nat.toDigits b n) - 1 - i) = i := 
-        Nat.sub_sub_self (Nat.le_sub_of_add_le h)
-      rw [heq, List.lastN_length, Nat.min_eq_left (Nat.le_of_lt h)]
 
-    | false => 
-      simp at h
-      have h₂: List.length (Nat.toDigits b n) - 1 ≤ i := by calc
-        List.length (Nat.toDigits b n) - 1 ≤ List.length (Nat.toDigits b n) := by simp only [tsub_le_iff_right, ge_iff_le, le_add_iff_nonneg_right]
-        _ ≤ i := h
-      simp [h, Nat.sub_eq_zero_of_le h₂]
 
     
 theorem Nat.toDigits_single_digit (b:ℕ) (n:ℕ) (P: n<b): Nat.toDigits b n = [Nat.digitChar n] := by
   unfold toDigits toDigitsCore
-  simp
+  simp only [_root_.zero_le, ge_iff_le, nonpos_iff_eq_zero, add_eq, add_zero]
   split
   . next => 
     have h:n % b = n := by exact mod_eq_of_lt P
     simp only [h]
   . next =>
     unfold toDigitsCore
-    simp
+    simp only [_root_.zero_le, ge_iff_le, nonpos_iff_eq_zero]
     split
-    . simp
+    . simp only [_root_.zero_le, ge_iff_le, nonpos_iff_eq_zero, zero_mod]
     . split
       . next h _=> exfalso; apply h; exact div_eq_of_lt P
       . next h _=> exfalso; apply h; exact div_eq_of_lt P
 
 @[simp]
-theorem Nat.pow_one (n:ℕ): n^1 =n := by 
-  simp [Nat.pow_succ, Nat.pow_zero]
-
 theorem String.toNatΔ_inv_NattoDigits (n:ℕ) : String.toNatΔ (Nat.toDigits 10 n) = n := by
-    rw [List.lastN]
+    induction n using Nat.strong_induction_on with
+    | h n ih =>
+      cases n
+      case zero => decide
+      case succ n=>
+        unfold toNatΔ toNatAux
+        simp only [zero_le, ge_iff_le, nonpos_iff_eq_zero, zero_mul, tsub_le_iff_right, zero_add]
+        split
+        . next heq => simp only [Nat.toDigits_nonempty] at heq
+        . next s hd tl heq =>
+          have h: tl = List.lastN (List.length (Nat.toDigits 10 (Nat.succ n))  - 1) (Nat.toDigits 10 (Nat.succ n)) := by
+            simp only [tsub_le_iff_right, ge_iff_le, List.lastN_eq_tail]
+            simp only [heq, List.tail_cons]
+          apply_fun String.toNatΔ at h
+          rw [String.toNatΔ_inv_NattoDigits_tail] at h
+          rw [String.toNatAux_accumulates, ← String.toNatΔ]
+          rw [h, ih]
+          . simp only [gt_iff_lt, Nat.toDigits_length_eq_log, add_tsub_cancel_right, ge_iff_le, add_le_iff_nonpos_left,
+              nonpos_iff_eq_zero, Nat.log_eq_zero_iff, or_false, zero_le, tsub_le_iff_right]
+            apply Eq.symm
+            rw [Nat.add_comm]
+            apply Nat.eq_add_of_sub_eq
+            . apply Nat.mod_le
+            . conv => left; left; rw [← Nat.mod_add_div (Nat.succ n) (10^Nat.log 10 (Nat.succ n))]
+              simp only [add_tsub_cancel_left, ge_iff_le, add_le_iff_nonpos_right, nonpos_iff_eq_zero, mul_eq_zero, zero_le,
+                Nat.log_pos_iff, and_true, tsub_le_iff_right]
+              have h₂: List.getD (Nat.toDigits 10 (Nat.succ n)) 0 '0' = hd := by
+                unfold List.getD
+                simp only [heq, zero_le, ge_iff_le, nonpos_iff_eq_zero, List.cons.injEq, forall_true_left, and_imp,
+                  forall_apply_eq_imp_iff', forall_eq', Option.getD_some,  List.get?]
+              rw [Nat.toDigits_eq_digit] at h₂
+              have h₃: List.length tl = List.length (Nat.toDigits 10 (Nat.succ n)) -1 := by
+                simp only [heq, List.length_cons, Nat.succ_sub_succ_eq_sub, tsub_zero, ge_iff_le, zero_le, nonpos_iff_eq_zero]
+              rw [Nat.toDigits_length_eq_log] at h₃
+              rw [← h₂, h₃, Nat.digitChar_sub_zero_eq_self, Nat.toDigits_length_eq_log, Nat.digit, Nat.mul_comm]
+              simp only [add_tsub_cancel_right, ge_iff_le, add_le_iff_nonpos_left, nonpos_iff_eq_zero, Nat.log_eq_zero_iff,
+                or_false, zero_le, tsub_zero, mul_eq_mul_right_iff, Nat.log_pos_iff, and_true]
+              left
+              apply Eq.symm (Nat.mod_eq_of_lt _)
+              . apply (Nat.div_lt_iff_lt_mul _).2
+                . rw [← pow_succ]
+                  apply Nat.lt_pow_of_log_lt
+                  . simp only
+                  . simp only [lt_add_iff_pos_right]
+                . simp only [zero_le, ge_iff_le, nonpos_iff_eq_zero, gt_iff_lt, pow_pos]
+              . simp only
+              . simp only [tsub_le_iff_right, ge_iff_le, zero_le, nonpos_iff_eq_zero, tsub_zero, tsub_eq_zero_iff_le,
+                gt_iff_lt, Nat.digit_lt_base]
+              . simp only
+              . simp only
+              . apply Nat.ne_zero_gt_zero
+                intro hp
+                apply Nat.toDigits_nonempty (List.length_eq_zero.1 hp)
+              
+          . simp only [gt_iff_lt, Nat.toDigits_length_eq_log, add_tsub_cancel_right, ge_iff_le, add_le_iff_nonpos_left,
+              nonpos_iff_eq_zero, Nat.log_eq_zero_iff, or_false, zero_le]
+            
+            calc
+              (Nat.succ n) % 10 ^ Nat.log 10 (Nat.succ n) < 10 ^ Nat.log 10 (Nat.succ n) :=  by apply Nat.mod_lt; apply Nat.pos_pow_of_pos; simp only
+              _ ≤  n + 1  := by apply Nat.pow_log_le_self; simp only [zero_le, ge_iff_le, nonpos_iff_eq_zero, ne_eq, Nat.succ_ne_zero, not_false_iff]
+            
+          . simp only
+
+@[simp]
+theorem String.toIntΔ_inv_IntreprΔ (i:ℤ): String.toIntΔ (Int.reprΔ i) = i := by
+  unfold toIntΔ Int.reprΔ
+  cases i with
+  | ofNat n =>
+    simp only [Int.ofNat_eq_coe]
+    split
+    case h_1 s heq =>
+      simp only [Nat.toDigits_nonempty] at heq
+    case h_2 head tail heq =>
+      split
+      case inl h =>
+        have h₂: (List.all (head::tail) Char.isDigit == true) = true := by
+          rw [← heq]
+          apply Nat.toDigits_digits <;> decide
+        simp at h₂
+        have ⟨ h₃, _⟩ :=h₂
+        simp only [h] at h₃
+      . simp only [← heq, toNatΔ_inv_NattoDigits]
+  | negSucc n =>
+    simp only [List.singleton_append, toNatΔ_inv_NattoDigits, Nat.cast_succ, neg_add_rev, ite_true,
+      Int.negSucc_eq]
 
 def List.splitOnP2 (P: α → Bool) (xs: List α): List (List α) :=
   match xs with
@@ -686,6 +978,7 @@ lemma List.splitOnP_eq_splitOnP2: List.splitOnP P xs = List.splitOnP2 P xs := by
         rw [h₁, List.splitOnP.go_acc, ←List.splitOnP, ←ih]
         simp
 
+@[simp]
 lemma List.splitOnP_nonempty: List.splitOnP P xs ≠ [] := by
   rw [List.splitOnP_eq_splitOnP2]
   induction xs with
@@ -701,7 +994,51 @@ lemma List.splitOnP_nonempty: List.splitOnP P xs ≠ [] := by
       . contradiction
       . simp
 
-theorem List.splitOn_intercalate (s: List Char) (delim: Char): List.intercalate [delim] (List.splitOn delim s) = s := by
+theorem List.splitOnP_all_false (h: ∀ e ∈ xs, P e = false): List.splitOnP P xs = [xs] := by
+  simp at h
+  induction xs with
+  | nil => simp
+  | cons head tail ih =>
+    rw [List.splitOnP_eq_splitOnP2, splitOnP2, ← List.splitOnP_eq_splitOnP2]
+    rw [h]
+    . simp only [modifyHead, ite_false]
+      split
+      case h_1 heq => simp only [splitOnP_nonempty] at heq
+      case h_2 s hd tl heq =>
+        rw [ih] at heq
+        simp only [cons.injEq] at heq
+        . simp only [heq]
+        . intro _ h₂
+          simp only [mem_cons, h₂, or_true, h]
+    . simp only [mem_cons, true_or]
+
+
+theorem List.splitOnP_prefix (h: ∀ e ∈ xs, P e = false) (h₂: P d = true): List.splitOnP P (xs ++ [d] ++ tl) = xs :: List.splitOnP P tl  := by
+  simp [List.splitOnP_eq_splitOnP2]
+  induction xs with
+  | nil =>
+    conv => left; unfold splitOnP2
+    simp only [nil_append, singleton_append, modifyHead, h₂, ite_true, splitOnP_eq_splitOnP2]
+  | cons head tail ih =>
+    conv => left; unfold splitOnP2
+    simp only [cons_append, append_assoc, singleton_append, mem_cons, splitOnP_eq_splitOnP2, modifyHead, true_or,
+      h, ite_false]
+    split
+    case h_1 heq =>
+      simp [← List.splitOnP_eq_splitOnP2, splitOnP_nonempty] at heq
+    case h_2 heq =>
+      rw [ih] at heq
+      . congr
+        . simp_all only [mem_cons, or_true, implies_true, forall_true_left, forall_eq_or_imp, cons.injEq]
+        . simp only [cons.injEq] at heq
+          simp only [heq]
+      . intro e ein
+        simp only [mem_cons, ein, or_true, h]
+      
+
+    
+
+theorem List.intercalate_splitOn (s: List Char) (delim: Char): List.intercalate [delim] (List.splitOn delim s) = s := by
   rw [List.splitOn, List.splitOnP_eq_splitOnP2]
   induction s with
   | nil => 
@@ -757,31 +1094,117 @@ theorem List.splitOn_intercalate (s: List Char) (delim: Char): List.intercalate 
           rw [heq] at tail_ih
           rw [← tail_ih, intercalate]
           simp
+
+theorem List.intercalateTR.go_accumulates: intercalateTR.go sep x xs (acc ++ tl) = acc.toList ++ intercalateTR.go sep x xs (tl) := by
+  induction xs generalizing acc tl x with
+  | nil =>
+    unfold go
+    simp only [Array.toListAppend_eq, Array.append_data, append_assoc, Array.toList_eq, join, append_nil]
+  | cons h t ih =>
+    unfold go
+    rw [ih, ih]
+    simp only [Array.toList_eq, Array.appendList_data, Array.append_data, append_assoc]
+
+theorem List.splitOn_intercalate (l: List (List Char)) (delim: Char) (P: l≠ []) (Q: ∀ e ∈ l, delim ∉ e): List.splitOn delim (List.intercalate [delim] l) = l := by
+  induction  l with
+  | nil =>
+    simp only at P
+  | cons head tail ih =>
+    unfold List.splitOn
+    rw [List.intercalate_eq_intercalateTR, intercalateTR]
+    split
+    case h_1 heq => simp only at heq
+    case h_2 elem heq =>
+      rw [heq, List.splitOnP_all_false]
+      intro c cin
+      have h₂: elem ∈ head::tail := by rw [heq ]; apply List.mem_singleton_self
+      have h₃ := Q elem h₂
+      simp only [beq_eq_false_iff_ne, ne_eq]
+      intro contr
+      rw [contr] at cin
+      contradiction
+    case h_3 heq =>
+      simp only [cons.injEq] at heq
+      have ⟨heq₁,heq₂⟩  := heq
+      rw [← heq₁, ← heq₂]
+      unfold intercalateTR.go
+      cases tail with
+      | nil =>
+        simp only [Array.toListAppend_eq, Array.data_toArray, nil_append]
+        apply splitOnP_all_false
+        intro e ein
+        simp only [beq_eq_false_iff_ne, ne_eq]
+        intro contr
+        rw [contr] at ein
+        have R:= Q head (List.mem_singleton_self head)
+        contradiction
+      | cons hd tl =>
+        simp only [intercalate_eq_intercalateTR.go, Array.append_data, Array.appendList_data, Array.data_toArray,
+        nil_append]
+        rw [List.splitOnP_prefix, ← intercalate, cons_inj, ←splitOn, ih]
+        . simp only [ne_eq, not_false_iff]
+        . intro e ein
+          apply Q
+          simp_all only [ne_eq, mem_cons, or_true, not_false_iff, implies_true, forall_const, forall_true_left,
+  forall_eq_or_imp, and_true]
+        . simp only [beq_eq_false_iff_ne, ne_eq]
+          intro e ein contr
+          apply Q head
+          . simp only [mem_cons, true_or]
+          . simp only [← contr, ein]
+        . simp only [beq_self_eq_true]
+
+
+def List.splitOnListAux [DecidableEq α] (delim: List α) (l:List α) (acc: Array α) (r: Array (Array α)): (Array (Array α)) :=
+  match l with
+  | [] => r.push acc
+  | head::tail =>
+    match h: getRest l delim with
+    | none => List.splitOnListAux delim tail (acc.push head) r
+    | some rest => 
+      have decreasing: List.length rest ≤  1 + List.length l := by simp [h]
+      List.splitOnListAux delim rest #[] (r.push acc)
+  decreasing_by
+    . decreasing_tactic 
+
+def List.splitOnList (delim: List α) (l: List α): List (List α) :=
+  if delim <+: l then
+
+
+
   
     
 
-def elf_to_string: List Int -> List Char 
-| [] => []
-| (h :: []) => (h.toString).data
-| (h :: tail) => String.append (String.append (toString h) " ") (elf_to_string tail) 
+def elf_to_string (e: List Int): List Char :=
+  List.intercalate ['\n'] (List.map Int.reprΔ e) ++ ['\n']
 
-def elves_to_string (elves: List (List Int)) : String := 
-  List.map (λ e => (elf_to_string e) ++ "\n") elves
-  |> List.foldl String.append ""
+def elves_to_string (elves: List (List Int)) : List Char := 
+  List.intercalate ['\n'] (List.map elf_to_string elves)
 
 
-def string_to_elves (s: String) : List (List Int)
-  :=
-  String.split s (λ c => c = '¬') |>
-   List.map (λ st => String.split st (λ c => c = ' ') |> List.map String.toInt!)
+def stringToElvesAux (s:List Char) (int_acc: List Char) (elf_acc:List Int) (elves_acc: List (List Int)): List (List Int) :=
+  match s with
+  | [] => elves_acc
+  | '\n'::('\n'::tail) => stringToElvesAux tail [] [] (elves_acc ++ [elf_acc])
+  | '\n'::tail => stringToElvesAux tail [] (elf_acc ++ [String.toIntΔ int_acc]) elves_acc
+  | head::tail => stringToElvesAux tail  (int_acc ++ [head]) elf_acc elves_acc
+   
 
-lemma String.split_empty (c): String.split "" c = [""] := by
-  rw [String.split]; 
+def stringToElves (s: List Char) : List (List Int) :=
+  stringToElvesAux s [] [] []
 
+#eval List.splitOn '\n' (elves_to_string  [])
+    |> List.dropLast
+    |> List.splitOn []
+
+#eval stringToElves  ['2', '\n', '\n', '\n', '\n', '4', '\n', '\n', '5', '\n', '3', '6', '\n', '7', '\n']
+#eval elves_to_string  [[2],[],[4], [5,36,7]]
+#eval List.splitOn '\n' ['2', '\n', '\n', '\n', '\n', '4', '\n', '\n', '5', '\n', '3', '6', '\n', '7', '\n']
+#eval stringToElves (elves_to_string [[1,2,3], [], [], []])
 theorem elves_roundtrip (elves: List (List Int)): string_to_elves (elves_to_string elves) = elves := by
-  induction elves with
-  | nil => 
-    rw [string_to_elves, elves_to_string]
-    simp
-
-
+  unfold string_to_elves elves_to_string elf_to_string
+  rw [List.splitOn_intercalate]
+  . simp
+  . simp
+  . simp
+  
