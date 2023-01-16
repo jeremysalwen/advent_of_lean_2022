@@ -3,3 +3,6 @@
 - String functions are all using `partial` which makes them unamenable to proving.
 - List and Array conversions don't seem to be simplified away
 - List.split is tail recursive so harder to prove with.
+- couldn't solve arithmetic like
+   length s + (length delim + length t) - (length delim - 1) - (length s + length delim) = length t - (length delim - 1)
+- library search fails and can't change heartbeat limit

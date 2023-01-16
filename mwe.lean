@@ -1,17 +1,11 @@
-import Mathlib.Tactic.LibrarySearch
-import Lean
+import Std.Data.List.Basic
+import Mathlib.Tactic.applyFun
 
-theorem Nat.toDigitsCore_slow (b:ℕ) (n:ℕ) (P: b>1): ∀i:ℕ, (Nat.toDigits b n).reverse.getD (i+1) '0' = (Nat.toDigits b (n/b)).reverse.getD i '0':= by
-  intro i
+open Lean
 
-  conv =>
-    left
-    unfold toDigits toDigitsCore
-  sorry
+def f (x: α): α := sorry
 
-
-theorem Nat.toDigitsCore_fast (b:ℕ) (n:ℕ) (P: b>1): ∀i:ℕ, (Nat.toDigits b n).reverse.getD (i+1) '0' = (Nat.toDigits b (n/b)).reverse.getD i '0':= by
-  intro i
-
-  rw [toDigits, toDigitsCore]
-  sorry
+lemma examp  (y:β) (h:  β → (∀ x:α, f x = x)): (λ x:α => f x) = (λ x => x) := by
+  simp [h] -- No error message
+  simp_rw [h] -- No error message
+  rw [h]  -- Can't rewrite under binders
