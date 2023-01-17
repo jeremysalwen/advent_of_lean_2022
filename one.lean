@@ -438,9 +438,8 @@ theorem List.lastN_length_eq_self (l: List α): List.lastN (length l) l = l := b
   unfold List.lastN
   simp
 
-#find Nat.min _ _
 @[simp]
-theorem List.lastN_length (l: List α) (i:ℕ): length (List.lastN i l) = min i (length l) := by
+lemma List.lastN_length (l: List α) (i:ℕ): length (List.lastN i l) = min i (length l) := by
   unfold lastN
   simp only [ge_iff_le, length_drop]
   cases h: decide (i ≤  length l) with
@@ -452,12 +451,58 @@ theorem List.lastN_length (l: List α) (i:ℕ): length (List.lastN i l) = min i 
     have h₂: length l ≤ i := Nat.le_of_lt h
     simp [h₂]
   
+lemma List.lastN_cons (head: α) (tail: List α) (i: ℕ): List.lastN i (head::tail) = if (head::tail).length > i then lastN i tail else head::tail := by
+  unfold lastN
+  induction tail with
+  | nil => 
+    split
+    case inl heq => simp_all
+    case inr heq => 
+      simp only [length_singleton, gt_iff_lt, Nat.lt_one_iff, ← ne_eq] at heq
+      simp only [length_singleton, ge_iff_le, Nat.sub_eq_zero_of_le (Nat.succ_le_of_lt (Nat.pos_of_ne_zero heq)), drop]
+  | cons mid tail ih=>
+    split
+    case inl heq =>
+      simp [Nat.succ_eq_one_add]
+      rw [Nat.add_sub_assoc, ←Nat.succ_eq_one_add, drop._eq_3]
+      simp_all only [Nat.le_of_lt_succ, length_cons, Nat.succ_eq_one_add, ge_iff_le, gt_iff_lt]
+    case inr heq =>
+      simp only [length_cons, gt_iff_lt, not_lt] at heq
+      simp only [length_cons, ge_iff_le, Nat.sub_eq_zero_of_le heq, drop]
 
 
 @[simp]
-theorem List.lastN_ge_length (l: List α) (h: n ≥ length l): List.lastN n l = l := by
+lemma List.lastN_ge_length (l: List α) (h: n ≥ length l): List.lastN n l = l := by
   unfold List.lastN
   simp [h]
+
+lemma List.lastN_one_eq_getLast (l:List α): l.lastN 1 = l.getLast?.toList:= by
+  induction l with
+  | nil => simp only [length_nil, ge_iff_le, lastN_ge_length, getLast?_nil, Option.to_list_none]
+  | cons head tail ih=> 
+    rw [lastN_cons]
+    simp only [length_cons, gt_iff_lt, ge_iff_le]
+    split
+    case inl heq =>
+      have hne: tail ≠ [] := by
+        apply List.ne_nil_of_length_pos
+        apply Nat.succ_lt_succ_iff.1 heq
+      rw [getLast?_cons, ih, getLast?_eq_getLast _ hne, List.getLastD]
+      split
+      . contradiction
+      . simp
+    case inr heq =>
+      simp at heq
+      have hnil: tail = [] := List.eq_nil_of_length_eq_zero (Nat.eq_zero_of_le_zero (Nat.le_of_succ_le_succ heq))
+      subst tail
+      simp only [getLast?_singleton, Option.to_list_some]
+
+lemma List.getLast?_some {α} {l: List α} {a:α} (h:List.getLast? l = some a): 
+  List.getLast l (by have h₂:= congr_arg Option.isSome h; simp at h₂; simp [h₂]) = a := by
+  have h₂:= congr_arg Option.isSome h
+  simp only [Option.isSome_some, getLast?_isSome, ne_eq] at h₂
+  rw [ List.getLast?_eq_getLast l h₂] at h
+  simp_all only [Option.some.injEq]
 
 @[simp]
 lemma Nat.eq_of_le_ge {n m: ℕ} (P: n ≤ m) (Q: n ≥ m): n = m := by
@@ -769,9 +814,6 @@ theorem String.toNatΔ_inv_NattoDigits_tail (b n i:ℕ) (Q: b > 1): String.toNat
       . exact Q
     . simp only [List.length_take, List.length_reverse, min_le_iff, ge_iff_le, h, true_or]
 
-
-
-
     
 theorem Nat.toDigits_single_digit (b:ℕ) (n:ℕ) (P: n<b): Nat.toDigits b n = [Nat.digitChar n] := by
   unfold toDigits toDigitsCore
@@ -1082,11 +1124,7 @@ theorem List.splitOnListAux_acc [DecidableEq α] {delim l: List α} (acc: Array 
     unfold splitOnListAux
     split
     case h_1 heq =>
-      apply Array.ext'
-      simp only [Array.push_data, Array.data_toArray, nil_append, Array.modifyHead_data, modifyHead,
-        Array.append_eq_append, cons.injEq, and_true]
-      apply Array.ext'
-      simp only [Array.append_data, Array.data_toArray, append_nil]
+      simp [Array.ext_iff]
     case h_2 head tail =>
       split
       case h_1 heq =>
@@ -1100,8 +1138,8 @@ theorem List.splitOnListAux_acc [DecidableEq α] {delim l: List α} (acc: Array 
         . simp only [length_cons, Nat.lt_succ_self]
         . simp only [length_cons, Nat.lt_succ_self]
       case h_2 heq =>
-        have h₁: (Array.push #[] acc) = (Array.push #[] acc) ++ #[] := by apply Array.ext'; simp only [Array.push_data, Array.data_toArray, nil_append, Array.append_data, singleton_append]
-        have h₂: (Array.push #[] #[]) = (Array.push #[] (#[]:Array α)) ++ #[] := by apply Array.ext'; simp only [Array.push_data, Array.data_toArray, nil_append, Array.append_data, singleton_append, cons.injEq, and_true]
+        have h₁: (Array.push #[] acc) = (Array.push #[] acc) ++ #[] := by simp [Array.ext_iff]
+        have h₂: (Array.push #[] #[]) = (Array.push #[] (#[]:Array α)) ++ #[] := by simp [Array.ext_iff]
         rw [h₁,h₂,List.splitOnListAux_r, List.splitOnListAux_r]
         simp [Array.ext_iff]
 
@@ -1745,7 +1783,7 @@ lemma List.modifyNth_modifyNth_eq (h: i=j): List.modifyNth f i (List.modifyNth g
       simp only [h₁, length_set]
   else
     simp only [not_lt] at h₁
-    have h₃: length (modifyNth g j l) ≤ i := by simp only [modify_get?_length, h₁]
+    have h₃: length l ≤ i := by simp only [modify_get?_length, h₁]
     rw [modifyNth_ge_length h₁, modifyNth_ge_length h₃, modifyNth_ge_length h₁]
 
 
@@ -1900,6 +1938,102 @@ lemma List.eq_of_isInfix_len_ge {l₁ l₂: List α} (h: l₁ <:+: l₂) (len_ge
   subst_vars
   simp only [append_nil, nil_append]
 
+lemma List.mem_intersperse (h:a ∈ intersperse sep l): a = sep ∨ a ∈ l := by
+  match l with
+  | [] => rw [intersperse] at h; contradiction
+  | [single] =>
+    simp only [intersperse, mem_singleton] at h
+    right
+    simp only [h, mem_singleton]
+  | head::mid::tail =>
+    simp only [intersperse, mem_cons] at h
+    simp only [mem_cons]
+    rcases h with hd | sp | mem
+    . simp only [hd, true_or, or_true]
+    . simp only [sp, true_or]
+    . rcases mem_intersperse mem with mid | tl
+      . simp only [mid, true_or]
+      . simp only [mem_cons] at tl
+        simp only [tl, or_true]
+
+lemma List.mem_intersperse_of_mem (h: a ∈ l): a ∈ intersperse sep l :=  by
+  match l with
+  | [] => simp only [not_mem_nil] at h
+  | [a] => simp_all only [mem_singleton, intersperse]
+  | head::mid::tail =>
+    simp only [intersperse, mem_cons]
+    simp at h
+    rcases h with h |m |t <;> simp_all
+    . right; right; apply mem_intersperse_of_mem; simp only [mem_cons, true_or]
+    . right; right; apply mem_intersperse_of_mem; simp only [t, mem_cons, or_true]
+
+
+
+lemma List.mem_intercalate (h:a ∈ intercalate delim l): a ∈ delim ∨ ∃ e∈l, a ∈ e := by
+  simp only [intercalate, mem_join] at h
+  have ⟨e, ein, ain⟩ := h
+  cases List.mem_intersperse ein with
+  | inl heq =>
+    simp only [← heq, ain, true_or]
+  | inr heq =>
+    right
+    exists e
+
+lemma List.mem_intercalate_of_mem (h₁: a ∈ e) (h₂: e ∈ l): a ∈ intercalate delim l := by
+  rw [intercalate]
+  apply mem_join_of_mem
+  apply mem_intersperse_of_mem
+  apply h₂
+  apply h₁
+
+lemma List.join_eq_nil (h: join l = []): ∀ e ∈ l, e = [] := by
+  induction l with
+  | nil =>
+    simp only [not_mem_nil, IsEmpty.forall_iff, forall_const]
+  | cons head tail ih=>
+    simp_all only [join, append_eq_nil, mem_cons, forall_eq_or_imp, true_and, forall_true_left]
+    apply ih
+
+lemma List.intercalate_eq_nil (h: intercalate delim l = []): ∀ e ∈ l, e = [] := by
+  rw [intercalate] at h
+  have all_nil := join_eq_nil h
+  intro e ein
+  apply all_nil
+  apply mem_intersperse_of_mem ein
+
+
+lemma List.getLast_intercalate {a:α} (l:List (List α)) (h₂: intercalate delim l ≠ []) (not_nil: l.getLast? ≠ some []): 
+    getLast (intercalate delim l) h₂ =
+    getLast (getLast l (by intro contr; apply h₂; rw [contr]; simp only [intercalate._eq_1, join])) (by intro contr; apply not_nil;rw[←contr]; apply List.getLast?_eq_getLast)
+    := by
+  match l with
+  | [] => simp only [intercalate._eq_1, join, ne_eq, not_true] at h₂
+  | [a] =>
+    simp [intercalate]
+  | [a,b] =>
+    simp [intercalate]
+    simp [← intercalate._eq_1]
+    simp only [← append_assoc]
+    rw [getLast_append']
+  | head::mid::mid₂::tail =>
+    simp [intercalate]
+    simp [← intercalate._eq_1]
+    simp only [← append_assoc]
+    rw [getLast_append', getLast_intercalate (mid₂::tail)]
+    . intro contr
+      apply not_nil
+      rw [List.getLast?_eq_getLast]
+      simp only [ne_eq, not_false_iff, getLast_cons, Option.some.injEq]
+      generalize_proofs hp
+      apply List.intercalate_eq_nil contr (getLast (mid₂ :: tail) hp)
+      apply List.getLast_mem
+      simp only [ne_eq, not_false_iff]
+    . intro contr
+      apply not_nil
+      simp only [getLast?_cons_cons, contr]
+
+
+
 lemma List.mem_of_mem_take (n) (h:a ∈ take n l): a ∈ l := by
   rw [← take_append_drop n l]
   apply mem_append_left _ h
@@ -1946,14 +2080,14 @@ lemma List.count_append [BEq α] (a: α) (l₁ l₂: List α): count a (l₁ ++ 
   apply List.countp_append
 
 
-lemma List.isInfix_countp_le (h: l₁<:+: l₂): countp p l₁ ≤ countp p l₂ := by
+lemma List.isInfix_countp_le (h: l₁ <:+: l₂): countp p l₁ ≤ countp p l₂ := by
   have ⟨s,t,heq⟩ := h
   apply_fun countp p at heq
   simp only [append_assoc, countp_append] at heq
   rw [← heq]
   linarith
 
-lemma List.isInfix_count_le [BEq α] (a) {l₁ l₂: List α} (h: l₁<:+: l₂): count a l₁ ≤ count a l₂ := by
+lemma List.isInfix_count_le [BEq α] (a) {l₁ l₂: List α} (h: l₁ <:+: l₂): count a l₁ ≤ count a l₂ := by
   unfold count
   apply List.isInfix_countp_le h
 
@@ -2082,7 +2216,8 @@ theorem elves_roundtrip (elves: List (List Int)): stringToElves (elvesToString e
     simp only [beq_iff_eq, h, ite_false, List.append_eq_nil, and_false, ne_eq, decide_not]
     rw [List.splitOnList_append, List.splitOnList_intercalate]
     if h₂: (List.map (fun e => List.intercalate [Char.ofNat 10] (List.map Int.reprΔ e)) elves) = [] then
-      simp [h₂]
+      simp at h₂
+      contradiction
     else
       rw [← List.dropLast_append_getLast h₂, List.modifyLast_append_one]
       conv => right; rw [← List.dropLast_append_getLast (l:=elves) h]
@@ -2167,6 +2302,63 @@ theorem elves_roundtrip (elves: List (List Int)): stringToElves (elvesToString e
       . simp only
       . rw [heq]
         simp only [ne_eq]
+      . apply List.isInfix_trans contr
+        rw [List.append_assoc]
+        apply List.isInfix_append_left_of_isInfix
+        exists [], []
+        simp only [List.nil_append, List.append_nil]
+    . simp only [ne_eq, List.map_eq_nil, h, not_false_iff]
+    . simp only [List.length_cons, List.length_singleton, Nat.succ_sub_succ_eq_sub, tsub_zero, ge_iff_le, zero_le,
+        nonpos_iff_eq_zero, List.length, List.lastN_one_eq_getLast]
+      unfold Option.toList
+      split
+      . intro contr
+        have contr₂ := List.isInfix_length contr
+        simp only at contr₂
+      . case h_2 heq =>
+        have heq₂ := List.getLast?_some heq
+        rw [← heq₂]
+        intro contr
+        have contr_eq := List.eq_of_isInfix_len_ge contr (by simp)
+        simp at contr_eq
+        rw [List.getLast_intercalate] at contr_eq
+        simp only [List.getLast_map (l:= elves) (hl:=h)] at contr_eq
+        rw [List.getLast_intercalate] at contr_eq
+        revert contr_eq
+        generalize_proofs hp hq
+        intro contr_eq
+        simp only [List.getLast_map Int.reprΔ (l:=List.getLast elves h) (by simp [imp_false] at hp; simp [hp])] at contr_eq
+        
+        have hmem: '\n' ∈ _ := by
+          rw [contr_eq]
+          apply List.getLast_mem
+        apply Int.not_newline_mem_reprΔ hmem
+        . intro contr
+          have contr := List.getLast?_some contr
+          revert contr
+          generalize_proofs hp
+          intro contr
+          rw [List.getLast_map] at contr
+          apply Int.reprΔ_ne_nil
+          apply contr
+          simp only [List.map_eq_nil] at hp
+          simp only [ne_eq, hp, not_false_iff]
+        . intro contr  
+          have contr := List.getLast?_some contr
+          revert contr
+          generalize_proofs hp
+          intro contr
+          rw [List.getLast_map] at contr
+          have contr := List.intercalate_eq_nil contr
+          simp only [List.mem_map', forall_exists_index, and_imp, forall_apply_eq_imp_iff₂] at contr
+          . sorry
+          . assumption
+        . exact '\n'
+        . exact '\n'
+          
+
+
+      
 
     
   
@@ -2194,4 +2386,6 @@ theorem isSolutionModel_solveOneModel: isSolutionModel solveOneModel := by
   apply WithBot.le_coe_unbot'
 
 theorem isSolution_solveOne: isSolution solveOne := by
-  
+  unfold isSolution solveOne
+  simp [Function.comp, isSolutionModel_solveOneModel, elves_roundtrip]
+

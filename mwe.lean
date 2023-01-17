@@ -1,11 +1,14 @@
 import Std.Data.List.Basic
 import Mathlib.Tactic.applyFun
+import Mathlib.Data.List.Basic
+
 
 open Lean
 
-def f (x: α): α := sorry
 
-lemma examp  (y:β) (h:  β → (∀ x:α, f x = x)): (λ x:α => f x) = (λ x => x) := by
-  simp [h] -- No error message
-  simp_rw [h] -- No error message
-  rw [h]  -- Can't rewrite under binders
+lemma List.getLast?_some {α} {l: List α} {a:α} (h:List.getLast? l = some a): 
+  List.getLast l (by have h₂:= congr_arg Option.isSome h; simp at h₂; simp [h₂]) = a := by sorry
+
+lemma examp  (h: List.getLast? l = some e): l ≠ [] := by
+  have h₂ := List.getLast?_some h
+  generalize_proofs h₂
